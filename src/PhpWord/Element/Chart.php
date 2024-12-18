@@ -27,6 +27,13 @@ use PhpOffice\PhpWord\Style\Chart as ChartStyle;
 class Chart extends AbstractElement
 {
     /**
+     * Options (can overwrite defaults in Writer\Part\Chart)
+     * 
+     * @var array|null
+     */
+    public ?array $options;
+
+    /**
      * Is part of collection.
      *
      * @var bool
@@ -62,11 +69,12 @@ class Chart extends AbstractElement
      * @param array $values
      * @param array $style
      * @param null|mixed $seriesName
+     * @param null|array $seriesStyle
      */
-    public function __construct($type, $categories, $values, $style = null, $seriesName = null)
+    public function __construct($type, $categories, $values, $style = null, $seriesName = null, $seriesStyle = null)
     {
         $this->setType($type);
-        $this->addSeries($categories, $values, $seriesName);
+        $this->addSeries($categories, $values, $seriesName, $seriesStyle);
         $this->style = $this->setNewStyle(new ChartStyle(), $style, true);
     }
 
@@ -97,13 +105,15 @@ class Chart extends AbstractElement
      * @param array $categories
      * @param array $values
      * @param null|mixed $name
+     * @param null|array $styles
      */
-    public function addSeries($categories, $values, $name = null): void
+    public function addSeries($categories, $values, $name = null, $styles = null): void
     {
         $this->series[] = [
             'categories' => $categories,
             'values' => $values,
             'name' => $name,
+            'styles' => $styles,
         ];
     }
 

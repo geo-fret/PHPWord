@@ -75,6 +75,13 @@ class Chart extends AbstractStyle
     private $legendPosition = 'r';
 
     /**
+     * Chart legend overlay option.
+     * 
+     * @var bool
+     */
+    private $legendOverlay = true;
+
+    /**
      * A list of display options for data labels.
      *
      * @var array
@@ -147,6 +154,23 @@ class Chart extends AbstractStyle
      * @var bool
      */
     private $gridX = false;
+
+    /**
+     * Are categories numeric?
+     * 
+     * @var bool
+     */
+    private $numericCategories = false;
+
+    /**
+     * Blank option for lines.
+     * "zero" - interpret missing value as 0
+     * "gap" - make a gap in the line
+     * "span" - span between last and next value
+     * 
+     * @var string
+     */
+    private $displayBlanksAs = 'zero';
 
     /**
      * Create a new instance.
@@ -334,6 +358,55 @@ class Chart extends AbstractStyle
         return $this;
     }
 
+    /**
+     * Get chart legend overlay option.
+     * 
+     * @return bool
+     */
+    public function getLegendOverlay()
+    {
+        return $this->legendOverlay;
+    }
+
+    /**
+     * Set chart legend overlay option.
+     * 
+     * @param bool $legendOverlay
+     * 
+     * @return self
+     */
+    public function setLegendOverlay($legendOverlay = true)
+    {
+        $this->legendOverlay = $legendOverlay;
+
+        return $this;
+    }
+
+    /**
+     * Get display blanks option.
+     * 
+     * @return string
+     */
+    public function getDisplayBlanksAs()
+    {
+        return $this->displayBlanksAs;
+    }
+
+    /**
+     * Set display blanks option.
+     * 
+     * @param string
+     * 
+     * @return self
+     */
+    public function setDisplayBlanksAs($displayBlanksAs = 'zero')
+    {
+        $enum = ['zero', 'gap', 'span'];
+        $this->displayBlanksAs = $this->setEnumVal($displayBlanksAs, $enum, $this->displayBlanksAs);
+
+        return $this;
+    }
+
     /*
      * Show labels for axis
      *
@@ -373,8 +446,10 @@ class Chart extends AbstractStyle
      * This will only change values for options defined in $this->dataLabelOptions, and cannot create new ones.
      *
      * @param array $values [description]
+     * 
+     * @return self
      */
-    public function setDataLabelOptions($values = []): void
+    public function setDataLabelOptions($values = [])
     {
         foreach (array_keys($this->dataLabelOptions) as $option) {
             if (isset($values[$option])) {
@@ -384,6 +459,8 @@ class Chart extends AbstractStyle
                 );
             }
         }
+
+        return $this;
     }
 
     /*
@@ -520,11 +597,15 @@ class Chart extends AbstractStyle
      * Set the position for major tick marks.
      *
      * @param string $position
+     * 
+     * @return self
      */
-    public function setMajorTickPosition($position): void
+    public function setMajorTickPosition($position)
     {
         $enum = ['in', 'out', 'cross', 'none'];
         $this->majorTickMarkPos = $this->setEnumVal($position, $enum, $this->majorTickMarkPos);
+
+        return $this;
     }
 
     /**
@@ -547,6 +628,30 @@ class Chart extends AbstractStyle
     public function setShowGridX($value = true)
     {
         $this->gridX = $this->setBoolVal($value, $this->gridX);
+
+        return $this;
+    }
+
+    /**
+     * Are the categories numeric?
+     * 
+     * @return bool
+     */
+    public function areCategoriesNumeric()
+    {
+        return $this->numericCategories;
+    }
+
+    /**
+     * Set categories numeric
+     * 
+     * @param bool $numericCategories
+     * 
+     * @return self
+     */
+    public function setCategoriesNumeric($numericCategories = true)
+    {
+        $this->numericCategories = $numericCategories;
 
         return $this;
     }
