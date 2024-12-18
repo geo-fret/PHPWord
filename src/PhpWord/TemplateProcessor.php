@@ -582,6 +582,60 @@ class TemplateProcessor
         return $imageAttrs;
     }
 
+    private function prepareSvgImageAttrs($replaceImage, $varInlineArgs)
+    {
+        // get image path and size
+        $width = null;
+        $height = null;
+        $ratio = null;
+
+        // a closure can be passed as replacement value which after resolving, can contain the replacement info for the image
+        // use case: only when a image if found, the replacement tags can be generated
+        if (is_callable($replaceImage)) {
+            $replaceImage = $replaceImage();
+        }
+
+        if (is_array($replaceImage) && isset($replaceImage['path'])) {
+            $imgPath = $replaceImage['path'];
+            if (isset($replaceImage['width'])) {
+                $width = $replaceImage['width'];
+            }
+            if (isset($replaceImage['height'])) {
+                $height = $replaceImage['height'];
+            }
+            if (isset($replaceImage['ratio'])) {
+                $ratio = $replaceImage['ratio'];
+            }
+        } else {
+            $imgPath = $replaceImage;
+        }
+
+        $width = $this->chooseImageDimension($width, $varInlineArgs['width'] ?? null, 115);
+        $height = $this->chooseImageDimension($height, $varInlineArgs['height'] ?? null, 70);
+
+        $svgXml = simplexml_load_string(file_get_contents($imgPath));
+        $svgAttributes = $svgXml->attributes();
+        $actualWidth = (int) $svgAttributes->width;
+        $actualHeight = (int) $svgAttributes->height;
+
+        // fix aspect ratio (by default)
+        if (null === $ratio && isset($varInlineArgs['ratio'])) {
+            $ratio = $varInlineArgs['ratio'];
+        }
+        if (null === $ratio || !in_array(strtolower($ratio), ['', '-', 'f', 'false'])) {
+            $this->fixImageWidthHeightRatio($width, $height, $actualWidth, $actualHeight);
+        }
+
+        $imageAttrs = [
+            'src' => $imgPath,
+            'mime' => 'image/svg+xml',
+            'width' => $width,
+            'height' => $height,
+        ];
+
+        return $imageAttrs;
+    }
+
     private function addImageToRelations($partFileName, $rid, $imgPath, $imageMimeType): void
     {
         // define templates
@@ -594,6 +648,7 @@ class TemplateProcessor
             'image/png' => 'png',
             'image/bmp' => 'bmp',
             'image/gif' => 'gif',
+            'image/svg+xml' => 'svg',
         ];
 
         // get image embed name
@@ -691,6 +746,127 @@ class TemplateProcessor
                     // replace preparations
                     $this->addImageToRelations($partFileName, $rid, $imgPath, $preparedImageAttrs['mime']);
                     $xmlImage = str_replace(['{RID}', '{WIDTH}', '{HEIGHT}'], [$rid, $preparedImageAttrs['width'], $preparedImageAttrs['height']], $imgTpl);
+
+                    // replace variable
+                    $varNameWithArgsFixed = static::ensureMacroCompleted($varNameWithArgs);
+                    $matches = [];
+                    if (preg_match('/(<[^<]+>)([^<]*)(' . preg_quote($varNameWithArgsFixed) . ')([^>]*)(<[^>]+>)/Uu', $partContent, $matches)) {
+                        $wholeTag = $matches[0];
+                        array_shift($matches);
+                        [$openTag, $prefix, , $postfix, $closeTag] = $matches;
+                        $replaceXml = $openTag . $prefix . $closeTag . $xmlImage . $openTag . $postfix . $closeTag;
+                        // replace on each iteration, because in one tag we can have 2+ inline variables => before proceed next variable we need to change $partContent
+                        $partContent = $this->setValueForPart($wholeTag, $replaceXml, $partContent, $limit);
+                    }
+
+                    if (++$i >= $limit) {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * @param mixed $search
+     * @param mixed $replace Path to image, or array("path" => xx, "width" => yy, "height" => zz)
+     * @param int $limit
+     */
+    public function setSvgImageValue($search, $replace, $limit = self::MAXIMUM_REPLACEMENTS_DEFAULT): void
+    {
+        // prepare $search_replace
+        if (!is_array($search)) {
+            $search = [$search];
+        }
+
+        $replacesList = [];
+        if (!is_array($replace) || isset($replace['path'])) {
+            $replacesList[] = $replace;
+        } else {
+            $replacesList = array_values($replace);
+        }
+
+        $searchReplace = [];
+        foreach ($search as $searchIdx => $searchString) {
+            $searchReplace[$searchString] = $replacesList[$searchIdx] ?? $replacesList[0];
+        }
+
+        // collect document parts
+        $searchParts = [
+            $this->getMainPartName() => &$this->tempDocumentMainPart,
+        ];
+        foreach (array_keys($this->tempDocumentHeaders) as $headerIndex) {
+            $searchParts[$this->getHeaderName($headerIndex)] = &$this->tempDocumentHeaders[$headerIndex];
+        }
+        foreach (array_keys($this->tempDocumentFooters) as $footerIndex) {
+            $searchParts[$this->getFooterName($footerIndex)] = &$this->tempDocumentFooters[$footerIndex];
+        }
+
+        // define templates (use drawing)
+        // see https://www.datypic.com/sc/ooxml/e-w_drawing-1.html
+        $imgTpl =   '<w:drawing>
+                        <wp:inline distT="0" distB="0" distL="0" distR="0">
+                            <wp:extent cx="{WIDTH}" cy="{HEIGHT}"/>
+                            <wp:effectExtent l="0" t="0" r="0" b="0"/>
+                            <wp:docPr id="{ID}" name="{NAME}"/>
+                            <wp:cNvGraphicFramePr>
+                                <a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/>
+                            </wp:cNvGraphicFramePr>
+                            <a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+                                <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+                                    <pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+                                        <pic:nvPicPr>
+                                            <pic:cNvPr id="{ID}" name="{NAME}"/>
+                                            <pic:cNvPicPr/>
+                                        </pic:nvPicPr>
+                                        <pic:blipFill>
+                                            <a:blip>
+                                                <a:extLst>
+                                                    <a:ext uri="{96DAC541-7B7A-43D3-8B79-37D633B846F1}">
+                                                        <asvg:svgBlip xmlns:asvg="http://schemas.microsoft.com/office/drawing/2016/SVG/main" r:embed="{RID}"/>
+                                                    </a:ext>
+                                                </a:extLst>
+                                            </a:blip>
+                                            <a:stretch>
+                                                <a:fillRect/>
+                                            </a:stretch>
+                                        </pic:blipFill>
+                                        <pic:spPr>
+                                            <a:xfrm>
+                                                <a:off x="0" y="0"/>
+                                                <a:ext cx="{WIDTH}" cy="{HEIGHT}"/>
+                                            </a:xfrm>
+                                            <a:prstGeom prst="rect">
+                                                <a:avLst/>
+                                            </a:prstGeom>
+                                        </pic:spPr>
+                                    </pic:pic>
+                                </a:graphicData>
+                            </a:graphic>
+                        </wp:inline>
+                    </w:drawing>';
+
+        $i = 0;
+        foreach ($searchParts as $partFileName => &$partContent) {
+            $partVariables = $this->getVariablesForPart($partContent);
+
+            foreach ($searchReplace as $searchString => $replaceImage) {
+                $varsToReplace = array_filter($partVariables, function ($partVar) use ($searchString) {
+                    return ($partVar == $searchString) || preg_match('/^' . preg_quote($searchString) . ':/', $partVar);
+                });
+
+                foreach ($varsToReplace as $varNameWithArgs) {
+                    $varInlineArgs = $this->getImageArgs($varNameWithArgs);
+                    $preparedImageAttrs = $this->prepareSvgImageAttrs($replaceImage, $varInlineArgs);
+                    $imgPath = $preparedImageAttrs['src'];
+
+                    // get image index
+                    $imgIndex = $this->getNextRelationsIndex($partFileName);
+                    $rid = 'rId' . $imgIndex;
+
+                    // replace preparations
+                    $this->addImageToRelations($partFileName, $rid, $imgPath, $preparedImageAttrs['mime']);
+                    $xmlImage = str_replace(['{RID}', '{WIDTH}', '{HEIGHT}', '{ID}', '{NAME}'], [$rid, $preparedImageAttrs['width'], $preparedImageAttrs['height'], $imgIndex, 'Grafik'], $imgTpl);
 
                     // replace variable
                     $varNameWithArgsFixed = static::ensureMacroCompleted($varNameWithArgs);
