@@ -1,4 +1,5 @@
 <?php
+
 /**
  * This file is part of PHPWord - A pure PHP library for reading and writing
  * word processing documents.
@@ -532,11 +533,8 @@ class Chart extends AbstractStyle
      * "nextTo" - sets labels next to the value
      * "low" - sets labels are below the graph
      * "high" - sets labels above the graph.
-     *
-     * @param string
-     * @param mixed $labelPosition
      */
-    public function setValueLabelPosition($labelPosition)
+    public function setValueLabelPosition(string $labelPosition)
     {
         $enum = ['nextTo', 'low', 'high'];
         $this->valueLabelPosition = $this->setEnumVal($labelPosition, $enum, $this->valueLabelPosition);

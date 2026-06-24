@@ -1,4 +1,5 @@
 <?php
+
 /**
  * This file is part of PHPWord - A pure PHP library for reading and writing
  * word processing documents.
@@ -79,6 +80,10 @@ class Image extends AbstractElement
         $xmlWriter->startElement('v:shape');
         $xmlWriter->writeAttribute('type', '#_x0000_t75');
         $xmlWriter->writeAttribute('stroked', 'f');
+
+        if ($element->getAltText() != null) {
+            $xmlWriter->writeAttribute('alt', $element->getAltText());
+        }
 
         $styleWriter->write();
 

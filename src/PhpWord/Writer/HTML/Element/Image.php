@@ -1,4 +1,5 @@
 <?php
+
 /**
  * This file is part of PHPWord - A pure PHP library for reading and writing
  * word processing documents.
@@ -44,8 +45,14 @@ class Image extends Text
             $style = $styleWriter->write();
             $imageData = 'data:' . $this->element->getImageType() . ';base64,' . $imageData;
 
+            $altText = $this->element->getAltText();
+            $altAttribute = '';
+            if ($altText) {
+                $altAttribute = " alt=\"{$altText}\"";
+            }
+
             $content .= $this->writeOpening();
-            $content .= "<img border=\"0\" style=\"{$style}\" src=\"{$imageData}\"/>";
+            $content .= "<img border=\"0\" style=\"{$style}\" src=\"{$imageData}\"{$altAttribute}/>";
             $content .= $this->writeClosing();
         }
 

@@ -1,4 +1,5 @@
 <?php
+
 /**
  * This file is part of PHPWord - A pure PHP library for reading and writing
  * word processing documents.
@@ -21,10 +22,13 @@ use DateTime;
 use DOMElement;
 use InvalidArgumentException;
 use PhpOffice\Math\Reader\OfficeMathML;
+use PhpOffice\PhpWord\ComplexType\RubyProperties;
 use PhpOffice\PhpWord\ComplexType\TblWidth as TblWidthComplexType;
 use PhpOffice\PhpWord\Element\AbstractContainer;
 use PhpOffice\PhpWord\Element\AbstractElement;
 use PhpOffice\PhpWord\Element\FormField;
+use PhpOffice\PhpWord\Element\Ruby;
+use PhpOffice\PhpWord\Element\Text;
 use PhpOffice\PhpWord\Element\TextRun;
 use PhpOffice\PhpWord\Element\TrackChange;
 use PhpOffice\PhpWord\PhpWord;
@@ -183,7 +187,7 @@ abstract class AbstractPart
     /**
      * Read w:p.
      *
-     * @param \PhpOffice\PhpWord\Element\AbstractContainer $parent
+     * @param AbstractContainer $parent
      * @param string $docPart
      *
      * @todo Get font style for preserve text
@@ -296,7 +300,8 @@ abstract class AbstractPart
         if ($headingDepth !== null) {
             $textContent = null;
             $nodes = $xmlReader->getElements('w:r|w:hyperlink', $domNode);
-            if ($nodes->length === 1) {
+            $hasRubyElement = $xmlReader->elementExists('w:r/w:ruby', $domNode);
+            if ($nodes->length === 1 && !$hasRubyElement) {
                 $textContent = htmlspecialchars($xmlReader->getValue('w:t', $nodes->item(0)), ENT_QUOTES, 'UTF-8');
             } else {
                 $textContent = new TextRun($paragraphStyle);
@@ -450,7 +455,7 @@ abstract class AbstractPart
     /**
      * Read w:r.
      *
-     * @param \PhpOffice\PhpWord\Element\AbstractContainer $parent
+     * @param AbstractContainer $parent
      * @param string $docPart
      * @param mixed $paragraphStyle
      *
@@ -523,15 +528,17 @@ abstract class AbstractPart
             $xmlReader->registerNamespace('a', 'http://schemas.openxmlformats.org/drawingml/2006/main');
 
             $name = $xmlReader->getAttribute('name', $node, 'wp:inline/a:graphic/a:graphicData/pic:pic/pic:nvPicPr/pic:cNvPr');
+            $altText = $xmlReader->getAttribute('descr', $node, 'wp:inline/a:graphic/a:graphicData/pic:pic/pic:nvPicPr/pic:cNvPr');
             $embedId = $xmlReader->getAttribute('r:embed', $node, 'wp:inline/a:graphic/a:graphicData/pic:pic/pic:blipFill/a:blip');
-            if ($name === null && $embedId === null) { // some Converters puts images on a different path
+            if ($name === null && $altText === null && $embedId === null) { // some Converters puts images on a different path
                 $name = $xmlReader->getAttribute('name', $node, 'wp:anchor/a:graphic/a:graphicData/pic:pic/pic:nvPicPr/pic:cNvPr');
+                $altText = $xmlReader->getAttribute('descr', $node, 'wp:anchor/a:graphic/a:graphicData/pic:pic/pic:nvPicPr/pic:cNvPr');
                 $embedId = $xmlReader->getAttribute('r:embed', $node, 'wp:anchor/a:graphic/a:graphicData/pic:pic/pic:blipFill/a:blip');
             }
             $target = $this->getMediaTarget($docPart, $embedId);
             if ($this->hasImageLoading() && null !== $target) {
                 $imageSource = "zip://{$this->docFile}#{$target}";
-                $parent->addImage($imageSource, null, false, $name);
+                $parent->addImage($imageSource, null, false, $name, $altText);
             }
         } elseif ($node->nodeName == 'w:object') {
             // Object
@@ -584,7 +591,45 @@ abstract class AbstractPart
             }
         } elseif ($node->nodeName == 'w:softHyphen') {
             $element = $parent->addText("\u{200c}", $fontStyle, $paragraphStyle);
+        } elseif ($node->nodeName == 'w:ruby') {
+            $rubyPropertiesNode = $xmlReader->getElement('w:rubyPr', $node);
+            $properties = $this->readRubyProperties($xmlReader, $rubyPropertiesNode);
+            // read base text node
+            $baseText = new TextRun($paragraphStyle);
+            $baseTextNode = $xmlReader->getElement('w:rubyBase/w:r', $node);
+            $this->readRun($xmlReader, $baseTextNode, $baseText, $docPart, $paragraphStyle);
+            // read the actual ruby text (e.g. furigana in Japanese)
+            $rubyText = new TextRun($paragraphStyle);
+            $rubyTextNode = $xmlReader->getElement('w:rt/w:r', $node);
+            $this->readRun($xmlReader, $rubyTextNode, $rubyText, $docPart, $paragraphStyle);
+            // add element to parent
+            $parent->addRuby($baseText, $rubyText, $properties);
         }
+    }
+
+    /**
+     * Read w:rubyPr element.
+     *
+     * @param XMLReader $xmlReader reader for XML
+     * @param DOMElement $domNode w:RubyPr element
+     *
+     * @return RubyProperties ruby properties from element
+     */
+    protected function readRubyProperties(XMLReader $xmlReader, DOMElement $domNode): RubyProperties
+    {
+        $rubyAlignment = $xmlReader->getElement('w:rubyAlign', $domNode)->getAttribute('w:val');
+        $rubyHps = $xmlReader->getElement('w:hps', $domNode)->getAttribute('w:val'); // font face
+        $rubyHpsRaise = $xmlReader->getElement('w:hpsRaise', $domNode)->getAttribute('w:val'); // pts above base text
+        $rubyHpsBaseText = $xmlReader->getElement('w:hpsBaseText', $domNode)->getAttribute('w:val'); // base text size
+        $rubyLid = $xmlReader->getElement('w:lid', $domNode)->getAttribute('w:val'); // type of ruby
+        $properties = new RubyProperties();
+        $properties->setAlignment($rubyAlignment);
+        $properties->setFontFaceSize((float) $rubyHps);
+        $properties->setFontPointsAboveBaseText((float) $rubyHpsRaise);
+        $properties->setFontSizeForBaseText((float) $rubyHpsBaseText);
+        $properties->setLanguageId($rubyLid);
+
+        return $properties;
     }
 
     /**
@@ -661,8 +706,11 @@ abstract class AbstractPart
             'alignment' => [self::READ_VALUE, 'w:jc'],
             'basedOn' => [self::READ_VALUE, 'w:basedOn'],
             'next' => [self::READ_VALUE, 'w:next'],
-            'indent' => [self::READ_VALUE, 'w:ind', 'w:left'],
-            'hanging' => [self::READ_VALUE, 'w:ind', 'w:hanging'],
+            'indentLeft' => [self::READ_VALUE, 'w:ind', 'w:left'],
+            'indentRight' => [self::READ_VALUE, 'w:ind', 'w:right'],
+            'indentHanging' => [self::READ_VALUE, 'w:ind', 'w:hanging'],
+            'indentFirstLine' => [self::READ_VALUE, 'w:ind', 'w:firstLine'],
+            'indentFirstLineChars' => [self::READ_VALUE, 'w:ind', 'w:firstLineChars'],
             'spaceAfter' => [self::READ_VALUE, 'w:spacing', 'w:after'],
             'spaceBefore' => [self::READ_VALUE, 'w:spacing', 'w:before'],
             'widowControl' => [self::READ_FALSE, 'w:widowControl'],

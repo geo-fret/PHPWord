@@ -1,4 +1,5 @@
 <?php
+
 /**
  * This file is part of PHPWord - A pure PHP library for reading and writing
  * word processing documents.
@@ -19,12 +20,12 @@ namespace PhpOffice\PhpWordTests\Element;
 
 use PhpOffice\PhpWord\Element\Image;
 use PhpOffice\PhpWord\SimpleType\Jc;
-use PhpOffice\PhpWordTests\AbstractWebServerEmbeddedTest;
+use PhpOffice\PhpWordTests\AbstractWebServerEmbedded;
 
 /**
  * Test class for PhpOffice\PhpWord\Element\Image.
  */
-class ImageTest extends AbstractWebServerEmbeddedTest
+class ImageTest extends AbstractWebServerEmbedded
 {
     /**
      * New instance.
@@ -34,11 +35,11 @@ class ImageTest extends AbstractWebServerEmbeddedTest
         $src = __DIR__ . '/../_files/images/firefox.png';
         $oImage = new Image($src);
 
-        self::assertInstanceOf('PhpOffice\\PhpWord\\Element\\Image', $oImage);
         self::assertEquals($src, $oImage->getSource());
         self::assertEquals(md5($src), $oImage->getMediaId());
         self::assertFalse($oImage->isWatermark());
         self::assertEquals(Image::SOURCE_LOCAL, $oImage->getSourceType());
+        self::assertNull($oImage->getAltText());
         self::assertInstanceOf('PhpOffice\\PhpWord\\Style\\Image', $oImage->getStyle());
     }
 
@@ -68,10 +69,9 @@ class ImageTest extends AbstractWebServerEmbeddedTest
      */
     public function testImages($source, $type, $extension, $createFunction, $imageFunction, $imageQuality): void
     {
-        $nam = ucfirst(strtok($source, '.'));
+        $nam = ucfirst((string) strtok($source, '.'));
         $source = __DIR__ . "/../_files/images/{$source}";
         $image = new Image($source, null, null, $nam);
-        self::assertInstanceOf('PhpOffice\\PhpWord\\Element\\Image', $image);
         self::assertEquals($source, $image->getSource());
         self::assertEquals($nam, $image->getName());
         self::assertEquals(md5($source), $image->getMediaId());
@@ -113,6 +113,17 @@ class ImageTest extends AbstractWebServerEmbeddedTest
     }
 
     /**
+     * Get alt text.
+     */
+    public function testAltText(): void
+    {
+        $source = __DIR__ . '/../_files/images/earth.jpg';
+        $altText = 'Picture of the earth from space';
+        $image = new Image($source, null, false, null, $altText);
+        self::assertEquals($altText, $image->getAltText());
+    }
+
+    /**
      * Test invalid local image.
      */
     public function testInvalidImageLocal(): void
@@ -128,7 +139,7 @@ class ImageTest extends AbstractWebServerEmbeddedTest
     {
         $this->expectException(\PhpOffice\PhpWord\Exception\InvalidImageException::class);
         $object = new Image('test.php');
-        $object->getSource();
+        $source = $object->getSource();
     }
 
     /**
@@ -146,7 +157,7 @@ class ImageTest extends AbstractWebServerEmbeddedTest
         ];
         stream_context_set_default($arrContextOptions);
         $object = new Image(self::getRemoteBmpImageUrl());
-        $object->getSource();
+        $source = $object->getSource();
     }
 
     /**
@@ -203,9 +214,8 @@ class ImageTest extends AbstractWebServerEmbeddedTest
         $source = file_get_contents(__DIR__ . '/../_files/images/earth.jpg');
 
         $image = new Image($source);
-        self::assertInstanceOf('PhpOffice\\PhpWord\\Element\\Image', $image);
         self::assertEquals($source, $image->getSource());
-        self::assertEquals(md5($source), $image->getMediaId());
+        self::assertEquals(md5((string) $source), $image->getMediaId());
         self::assertEquals('image/jpeg', $image->getImageType());
         self::assertEquals('jpg', $image->getImageExtension());
         self::assertEquals('imagecreatefromstring', $image->getImageCreateFunction());
@@ -225,7 +235,6 @@ class ImageTest extends AbstractWebServerEmbeddedTest
         $source = self::getRemoteImageUrl();
 
         $image = new Image($source);
-        self::assertInstanceOf('PhpOffice\\PhpWord\\Element\\Image', $image);
         self::assertEquals($source, $image->getSource());
         self::assertEquals(md5($source), $image->getMediaId());
         self::assertEquals('image/png', $image->getImageType());
@@ -246,6 +255,6 @@ class ImageTest extends AbstractWebServerEmbeddedTest
     {
         $this->expectException(\PhpOffice\PhpWord\Exception\InvalidImageException::class);
         $object = new Image('this_is-a_non_valid_image');
-        $object->getSource();
+        $source = $object->getSource();
     }
 }
